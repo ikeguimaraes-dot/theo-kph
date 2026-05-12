@@ -140,3 +140,11 @@ def abrir_ticket(employee_id: str, categoria: str, descricao: str) -> str:
     )
     row = res.data[0] if res.data else {}
     return row.get("id", "aberto")
+
+
+def save_metric(data: dict) -> None:
+    try:
+        _get_client().table("agent_metrics").insert(data).execute()
+    except Exception as exc:
+        import logging
+        logging.getLogger("theo.metrics").warning("Falha ao salvar métrica: %s", exc)
