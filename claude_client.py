@@ -66,7 +66,7 @@ def _execute_tool(name: str, input_data: dict) -> str:
 
 
 def process_message(
-    telefone: str, history: list[dict], user_text: str
+    telefone: str, history: list[dict], user_text: str, employee_context: str = ""
 ) -> tuple[str, dict]:
     """Returns (reply_text, usage) where usage has input_tokens and output_tokens
     accumulated across all tool-loop iterations."""
@@ -77,6 +77,10 @@ def process_message(
     total_output = 0
     response = None
 
+    system_text = SYSTEM_PROMPT
+    if employee_context:
+        system_text = SYSTEM_PROMPT + "\n\nCONTEXTO DO COLABORADOR LOGADO:\n" + employee_context
+
     for _ in range(MAX_TOOL_ITERATIONS):
         response = _anthropic.messages.create(
             model=MODEL,
@@ -84,7 +88,7 @@ def process_message(
             system=[
                 {
                     "type": "text",
-                    "text": SYSTEM_PROMPT,
+                    "text": system_text,
                     "cache_control": {"type": "ephemeral"},
                 }
             ],

@@ -125,13 +125,28 @@ async def chat(req: ChatRequest):
 
     history = conversation.get_history(session_key)
 
-    # Injeta contexto do colaborador logado se disponível
-    message = req.message
-    if req.employee_id and not history:
-        message = f"[contexto: employee_id={req.employee_id}] {req.message}"
+    # Injeta contexto estruturado do colaborador logado no system prompt
+    employee_context = ""
+    if req.employee_id:
+        colaborador = db.identificar_por_id(req.employee_id)
+        if colaborador:
+            nome_completo = colaborador["nome"]
+            if colaborador.get("sobrenome"):
+                nome_completo += f" {colaborador['sobrenome']}"
+            employee_context = (
+                f"Você está conversando com {nome_completo}, "
+                f"cargo: {colaborador.get('funcao') or 'não informado'}, "
+                f"departamento: {colaborador.get('departamento') or 'não informado'}, "
+                f"unidade: {colaborador.get('unidade') or 'não informada'}. "
+                f"employee_id: {colaborador['id']}. "
+                f"Use esse employee_id nas tools quando precisar buscar dados deste colaborador."
+            )
+            log.info("Colaborador identificado: %s (%s)", nome_completo, req.employee_id)
+        else:
+            log.warning("employee_id %s não encontrado no banco", req.employee_id)
 
     t0 = time.perf_counter()
-    response_text, usage = claude_client.process_message(session_key, history, message)
+    response_text, usage = claude_client.process_message(session_key, history, req.message, employee_context)
     latency_ms = (time.perf_counter() - t0) * 1000
 
     conversation.append_message(session_key, "user", req.message)

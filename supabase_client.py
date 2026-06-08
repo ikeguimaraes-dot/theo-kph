@@ -5,7 +5,7 @@ from supabase import create_client, Client
 _client: Client | None = None
 
 
-def _get_client() -> Client:
+def get_client() -> Client:
     global _client
     if _client is None:
         url = os.environ["SUPABASE_URL"]
@@ -16,7 +16,7 @@ def _get_client() -> Client:
 
 def identificar_colaborador(telefone: str) -> dict | None:
     """Busca colaborador ativo pelo telefone. Testa com e sem prefixo whatsapp:."""
-    db = _get_client()
+    db = get_client()
     telefone_limpo = re.sub(r'[\s\-\(\)]', '', telefone)
     telefone_limpo = telefone_limpo.replace('whatsapp:', '')
 
@@ -41,9 +41,40 @@ def identificar_colaborador(telefone: str) -> dict | None:
     }
 
 
+def identificar_por_id(employee_id: str) -> dict | None:
+    """Busca colaborador ativo pelo UUID. Usado pelo /chat do HOS App."""
+    db = get_client()
+    try:
+        res = (
+            db.table("employees")
+            .select("id, nome, sobrenome, funcao, departamento, unit_id, telefone, units(name)")
+            .eq("id", employee_id)
+            .eq("ativo", True)
+            .limit(1)
+            .execute()
+        )
+        if not res.data:
+            return None
+        row = res.data[0]
+        unidade = (row.get("units") or {}).get("name", "")
+        return {
+            "id": row["id"],
+            "nome": row["nome"],
+            "sobrenome": row.get("sobrenome", ""),
+            "funcao": row.get("funcao", ""),
+            "departamento": row.get("departamento", ""),
+            "unidade": unidade,
+            "telefone": row.get("telefone", ""),
+        }
+    except Exception as exc:
+        import logging
+        logging.getLogger("theo").warning("[THEO] identificar_por_id error: %s", exc)
+        return None
+
+
 def buscar_holerites(employee_id: str) -> list[dict]:
     """Retorna os últimos 6 holerites do colaborador."""
-    db = _get_client()
+    db = get_client()
     res = (
         db.table("payslips")
         .select("competencia, salario_base, liquido, status, pdf_url")
@@ -57,7 +88,7 @@ def buscar_holerites(employee_id: str) -> list[dict]:
 
 def buscar_banco_horas(employee_id: str) -> list[dict]:
     """Retorna os últimos 3 períodos de banco de horas."""
-    db = _get_client()
+    db = get_client()
     res = (
         db.table("time_records")
         .select(
@@ -74,7 +105,7 @@ def buscar_banco_horas(employee_id: str) -> list[dict]:
 
 def buscar_ferias(employee_id: str) -> list[dict]:
     """Retorna histórico de férias do colaborador."""
-    db = _get_client()
+    db = get_client()
     res = (
         db.table("vacations")
         .select(
@@ -105,7 +136,7 @@ def registrar_falta(
     }
     score_impact = score_map.get(tipo, 0)
 
-    db = _get_client()
+    db = get_client()
     res = (
         db.table("absences")
         .insert(
@@ -125,7 +156,7 @@ def registrar_falta(
 
 def abrir_ticket(employee_id: str, categoria: str, descricao: str) -> str:
     """Abre ticket em theo_tickets. Retorna o ticket_id."""
-    db = _get_client()
+    db = get_client()
     res = (
         db.table("theo_tickets")
         .insert(
@@ -144,7 +175,7 @@ def abrir_ticket(employee_id: str, categoria: str, descricao: str) -> str:
 
 def save_metric(data: dict) -> None:
     try:
-        _get_client().table("agent_metrics").insert(data).execute()
+        get_client().table("agent_metrics").insert(data).execute()
     except Exception as exc:
         import logging
         logging.getLogger("theo.metrics").warning("Falha ao salvar métrica: %s", exc)
