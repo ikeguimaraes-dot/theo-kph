@@ -109,8 +109,8 @@ def buscar_ferias(employee_id: str) -> list[dict]:
     res = (
         db.table("vacations")
         .select(
-            "start_date, end_date, days_taken, days_entitled, "
-            "acquisitive_period_start, acquisitive_period_end, status"
+            "inicio_gozo, fim_gozo, dias_gozados, dias_direito, "
+            "periodo_aquisitivo_inicio, periodo_aquisitivo_fim, status"
         )
         .eq("employee_id", employee_id)
         .order("created_at", desc=True)
