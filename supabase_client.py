@@ -15,30 +15,34 @@ def get_client() -> Client:
 
 
 def identificar_colaborador(telefone: str) -> dict | None:
-    """Busca colaborador ativo pelo telefone. Testa com e sem prefixo whatsapp:."""
-    db = get_client()
-    telefone_limpo = re.sub(r'[\s\-\(\)]', '', telefone)
-    telefone_limpo = telefone_limpo.replace('whatsapp:', '')
+    """
+    Busca colaborador ativo pelo telefone.
+    Normaliza para canônico BR (só dígitos, sem DDI 55) — espelha norm_fone_br()
+    do banco e normalizarTelefone() do front-end — e consulta contatos_kph como
+    fonte única, evitando .or_() com '+' em PostgREST.
+    """
+    digits = re.sub(r'[^\d]', '', telefone)
+    if len(digits) in (12, 13) and digits.startswith('55'):
+        digits = digits[2:]
+    canonical = digits  # ex: "11969498225"
 
+    if not canonical:
+        return None
+
+    db = get_client()
     res = (
-        db.table("employees")
-        .select("id, nome, sobrenome, funcao, unit_id, units(name)")
-        .or_(f"telefone.eq.{telefone_limpo},telefone.eq.whatsapp:{telefone_limpo}")
-        .eq("ativo", True)
+        db.table("contatos_kph")
+        .select("employee_id")
+        .eq("telefone", canonical)
         .limit(1)
         .execute()
     )
     if not res.data:
         return None
-    row = res.data[0]
-    unidade = (row.get("units") or {}).get("name", "")
-    return {
-        "id": row["id"],
-        "nome": row["nome"],
-        "sobrenome": row.get("sobrenome", ""),
-        "funcao": row.get("funcao", ""),
-        "unidade": unidade,
-    }
+    employee_id = res.data[0].get("employee_id")
+    if not employee_id:
+        return None
+    return identificar_por_id(employee_id)
 
 
 def identificar_por_id(employee_id: str) -> dict | None:
@@ -175,7 +179,8 @@ def abrir_ticket(employee_id: str, categoria: str, descricao: str) -> str:
 
 def save_metric(data: dict) -> None:
     try:
-        get_client().table("agent_metrics").insert(data).execute()
+        row = {k: v for k, v in data.items() if k != "timestamp"}
+        get_client().table("agent_metrics").insert(row).execute()
     except Exception as exc:
         import logging
-        logging.getLogger("theo.metrics").warning("Falha ao salvar métrica: %s", exc)
+        logging.getLogger("theo.metrics").error("Falha ao salvar métrica: %s", exc)
