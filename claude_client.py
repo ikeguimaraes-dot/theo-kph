@@ -78,8 +78,11 @@ def process_message(
     response = None
 
     system_text = SYSTEM_PROMPT
+    # Injeta telefone da sessão WhatsApp para que Claude saiba o que passar a identificar_colaborador
+    if telefone and not telefone.startswith("web:"):
+        system_text = system_text + f"\n\nTELEFONE DA SESSÃO ATUAL (WhatsApp): {telefone}"
     if employee_context:
-        system_text = SYSTEM_PROMPT + "\n\nCONTEXTO DO COLABORADOR LOGADO:\n" + employee_context
+        system_text = system_text + "\n\nCONTEXTO DO COLABORADOR LOGADO:\n" + employee_context
 
     for _ in range(MAX_TOOL_ITERATIONS):
         response = _anthropic.messages.create(
