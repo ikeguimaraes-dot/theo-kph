@@ -108,16 +108,13 @@ def buscar_banco_horas(employee_id: str) -> list[dict]:
 
 
 def buscar_ferias(employee_id: str) -> list[dict]:
-    """Retorna histórico de férias do colaborador."""
+    """Retorna histórico de férias do colaborador via vacation_schedules."""
     db = get_client()
     res = (
-        db.table("vacations")
-        .select(
-            "inicio_gozo, fim_gozo, dias_gozados, dias_direito, "
-            "periodo_aquisitivo_inicio, periodo_aquisitivo_fim, status"
-        )
+        db.table("vacation_schedules")
+        .select("data_inicio, data_fim, data_retorno, total_dias, status")
         .eq("employee_id", employee_id)
-        .order("created_at", desc=True)
+        .order("data_inicio", desc=True)
         .limit(5)
         .execute()
     )
