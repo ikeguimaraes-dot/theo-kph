@@ -70,7 +70,7 @@ def process_message(
 ) -> tuple[str, dict]:
     """Returns (reply_text, usage) where usage has input_tokens and output_tokens
     accumulated across all tool-loop iterations."""
-    messages = list(history)
+    messages = [{**m, "role": "assistant" if m.get("role") == "operator" else m.get("role")} for m in history if m.get("role") in ("user", "assistant", "operator")]
     messages.append({"role": "user", "content": user_text})
 
     total_input = 0
@@ -131,3 +131,4 @@ def process_message(
         if hasattr(block, "type") and block.type == "text":
             return block.text, {"input_tokens": total_input, "output_tokens": total_output}
     return "Desculpe, tive um problema interno. Pode repetir?", {"input_tokens": total_input, "output_tokens": total_output}
+
