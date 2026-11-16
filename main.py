@@ -4,7 +4,7 @@ import os
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from twilio.rest import Client as TwilioClient
@@ -71,6 +71,30 @@ class ChatResponse(BaseModel):
 
 class MobileChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
+
+
+class MobileReportRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=12000)
+
+
+@app.post('/mobile/report')
+async def mobile_report(req: MobileReportRequest, request: Request):
+    employee_id = await security.require_employee_session(request)
+    content = req.content.strip()
+    if not content:
+        raise HTTPException(status_code=422, detail='Informe a resposta a denunciar.')
+    # Reuse the existing support queue. Never ask the model to process a report
+    # or accept an employee_id supplied in the request body.
+    try:
+        ticket_id = await asyncio.to_thread(
+            db.abrir_ticket, employee_id, 'caso_sensivel',
+            'Denúncia de resposta do Theo pelo Pipou:\n\n' + content)
+        if not ticket_id or ticket_id == 'aberto':
+            raise ValueError('No persisted ticket identifier')
+    except Exception:
+        log.warning('Falha ao registrar denúncia do Theo')
+        raise HTTPException(status_code=503, detail='Não foi possível registrar a denúncia.')
+    return {'id': str(ticket_id), 'status': 'recebida'}
 
 
 @app.post('/mobile/chat', response_model=ChatResponse)

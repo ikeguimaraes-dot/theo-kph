@@ -81,3 +81,43 @@ def test_mobile_session_server_validation(monkeypatch):
     with pytest.raises(HTTPException) as error:
         asyncio.run(security.require_employee_session(req))
     assert error.value.status_code == 503
+
+
+def test_mobile_report_requires_session_before_writing(monkeypatch):
+    ticket = Mock(side_effect=AssertionError('no unauthenticated write'))
+    monkeypatch.setattr(main.db, 'abrir_ticket', ticket)
+    client = TestClient(main.app)
+    assert client.post('/mobile/report', json={'content': 'Example reply'}).status_code == 401
+    assert client.post('/mobile/report', json={'content': 'Example reply'}, headers={'X-Employee-Session': 'invalid'}).status_code == 401
+    ticket.assert_not_called()
+
+
+def test_mobile_report_uses_authenticated_employee_and_no_ai(monkeypatch):
+    monkeypatch.setattr(security, 'require_employee_session', AsyncMock(return_value=EMPLOYEE_A))
+    ticket = Mock(return_value='00000000-0000-4000-8000-000000000003')
+    monkeypatch.setattr(main.db, 'abrir_ticket', ticket)
+    provider = Mock(side_effect=AssertionError('reports must not invoke AI'))
+    monkeypatch.setattr(main.claude_client, 'process_message', provider)
+    result = TestClient(main.app).post('/mobile/report', json={'content': '  Example reply  ', 'employee_id': EMPLOYEE_B})
+    assert result.status_code == 200
+    assert result.json()['status'] == 'recebida'
+    assert result.json()['id'] == '00000000-0000-4000-8000-000000000003'
+    ticket.assert_called_once_with(EMPLOYEE_A, 'caso_sensivel', 'Denúncia de resposta do Theo pelo Pipou:\n\nExample reply')
+    provider.assert_not_called()
+
+
+@pytest.mark.parametrize('content', ['', '   ', 'x' * 12001])
+def test_mobile_report_rejects_empty_or_oversized_content(monkeypatch, content):
+    monkeypatch.setattr(security, 'require_employee_session', AsyncMock(return_value=EMPLOYEE_A))
+    ticket = Mock()
+    monkeypatch.setattr(main.db, 'abrir_ticket', ticket)
+    assert TestClient(main.app).post('/mobile/report', json={'content': content}).status_code == 422
+    ticket.assert_not_called()
+
+
+@pytest.mark.parametrize('failure', [RuntimeError('database unavailable'), None, 'aberto'])
+def test_mobile_report_does_not_claim_success_without_persistence(monkeypatch, failure):
+    monkeypatch.setattr(security, 'require_employee_session', AsyncMock(return_value=EMPLOYEE_A))
+    ticket = Mock(side_effect=failure) if isinstance(failure, Exception) else Mock(return_value=failure)
+    monkeypatch.setattr(main.db, 'abrir_ticket', ticket)
+    assert TestClient(main.app).post('/mobile/report', json={'content': 'Example reply'}).status_code == 503
