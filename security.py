@@ -5,6 +5,30 @@ import os
 import re
 from fastapi import HTTPException, Request
 from twilio.request_validator import RequestValidator
+import httpx
+from uuid import UUID
+
+async def require_employee_session(request: Request) -> str:
+    token = request.headers.get('X-Employee-Session', '')
+    if not re.fullmatch(r'[a-f0-9]{64}', token):
+        raise HTTPException(401, 'Employee session required')
+    url = os.environ.get('SUPABASE_URL', '').rstrip('/')
+    key = os.environ.get('SUPABASE_SERVICE_KEY', '')
+    if url != 'https://iqgrvptrtphvbmvrqntm.supabase.co' or not key:
+        raise HTTPException(503, 'Employee authentication unavailable')
+    headers = {'apikey': key, 'X-Hos-Protocol': '2', 'X-Employee-Session': token}
+    if key.startswith('eyJ'):
+        headers['Authorization'] = 'Bearer ' + key
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            result = await client.post(url + '/rest/v1/rpc/employee_session_check', headers=headers, json={})
+        if result.status_code in (401, 403):
+            raise HTTPException(401, 'Invalid or expired employee session')
+        if not result.is_success:
+            raise HTTPException(503, 'Employee authentication unavailable')
+        return str(UUID(result.json()['employee_id']))
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        raise HTTPException(503, 'Employee authentication unavailable')
 
 def require_api_key(request: Request, agent: str) -> None:
     expected = os.environ.get(f"{agent.upper()}_INTERNAL_TOKEN", "")

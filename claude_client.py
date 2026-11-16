@@ -15,7 +15,13 @@ SYSTEM_PROMPT = open(
 _anthropic = anthropic.Anthropic()
 
 
-def _execute_tool(name: str, input_data: dict) -> str:
+def _execute_tool(name: str, input_data: dict, authorized_employee_id: str | None = None) -> str:
+    if authorized_employee_id is not None:
+        # Never trust a model-supplied identity, including identity lookup by phone.
+        if name == 'identificar_colaborador':
+            return 'A identidade já foi confirmada pela sessão do aplicativo.'
+        if str(input_data.get('employee_id', '')) != authorized_employee_id:
+            return 'Acesso negado: consulte somente os dados do colaborador autenticado.'
     try:
         if name == "identificar_colaborador":
             colaborador = db.identificar_colaborador(input_data["telefone"])
@@ -66,7 +72,7 @@ def _execute_tool(name: str, input_data: dict) -> str:
 
 
 def process_message(
-    telefone: str, history: list[dict], user_text: str, employee_context: str = ""
+    telefone: str, history: list[dict], user_text: str, employee_context: str = "", authorized_employee_id: str | None = None
 ) -> tuple[str, dict]:
     """Returns (reply_text, usage) where usage has input_tokens and output_tokens
     accumulated across all tool-loop iterations."""
@@ -114,7 +120,7 @@ def process_message(
             tool_results = []
             for block in response.content:
                 if hasattr(block, "type") and block.type == "tool_use":
-                    result = _execute_tool(block.name, block.input)
+                    result = _execute_tool(block.name, block.input, authorized_employee_id)
                     tool_results.append(
                         {
                             "type": "tool_result",

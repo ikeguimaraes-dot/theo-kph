@@ -5,3 +5,4 @@ twilio==9.3.7
 supabase==2.16.0
 python-dotenv==1.0.1
 python-multipart==0.0.20
+httpx==0.28.1

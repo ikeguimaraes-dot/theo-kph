@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from twilio.rest import Client as TwilioClient
 from twilio.twiml.messaging_response import MessagingResponse
 
@@ -69,6 +69,20 @@ class ChatResponse(BaseModel):
     session_id: str
 
 
+class MobileChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+
+
+@app.post('/mobile/chat', response_model=ChatResponse)
+async def mobile_chat(req: MobileChatRequest, request: Request):
+    employee_id = await security.require_employee_session(request)
+    # Session and identity are server-derived. The caller cannot select another
+    # employee or another conversation by editing JSON fields.
+    return await respond_chat(ChatRequest(session_id='hos_' + employee_id,
+                                         message=req.message, employee_id=employee_id),
+                              authorized_employee_id=employee_id)
+
+
 class SendRequest(BaseModel):
     phone: str
     message: str
@@ -122,9 +136,13 @@ async def send_operator(req: SendRequest, request: Request):
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, request: Request):
     security.require_api_key(request, AGENT_NAME)
+    return await respond_chat(req)
+
+
+async def respond_chat(req: ChatRequest, authorized_employee_id: str | None = None):
     """Endpoint web para o KPH-OS."""
     session_key = f"web:{req.session_id}"
-    log.info("Chat web [%s]: %s", session_key, req.message[:80])
+    log.info("Chat request received")
 
     history = conversation.get_history(session_key)
 
@@ -144,12 +162,12 @@ async def chat(req: ChatRequest, request: Request):
                 f"employee_id: {colaborador['id']}. "
                 f"Use esse employee_id nas tools quando precisar buscar dados deste colaborador."
             )
-            log.info("Colaborador identificado: %s (%s)", nome_completo, req.employee_id)
+            log.info("Colaborador identificado")
         else:
             log.warning("employee_id %s não encontrado no banco", req.employee_id)
 
     t0 = time.perf_counter()
-    response_text, usage = claude_client.process_message(session_key, history, req.message, employee_context)
+    response_text, usage = claude_client.process_message(session_key, history, req.message, employee_context, authorized_employee_id=authorized_employee_id)
     latency_ms = (time.perf_counter() - t0) * 1000
 
     conversation.append_message(session_key, "user", req.message)
