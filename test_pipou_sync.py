@@ -32,8 +32,9 @@ def test_delete_requires_matching_old_etag():
     with pytest.raises(ValueError,match='FILE_DELETE_CONFLICT'):sync._copy_file(a,b,e)
     sb.remove.assert_not_called()
 
-def test_invalid_storage_bucket_is_rejected():
-    e=event();e['row_data']['bucket_id']='another-project'
+@pytest.mark.parametrize('bucket',['another-project','contratos'])
+def test_invalid_storage_bucket_is_rejected(bucket):
+    e=event();e['row_data']['bucket_id']=bucket
     with pytest.raises(ValueError,match='INVALID_FILE'):sync._copy_file(Mock(),Mock(),e)
 
 def test_failed_table_event_is_retried_without_losing_successful_one():

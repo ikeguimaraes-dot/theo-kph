@@ -8,7 +8,7 @@ import os
 from urllib.parse import quote
 import supabase_client as db
 log=logging.getLogger('pipou.sync')
-BUCKETS={'employee-documents','documents','punch-photos','payroll-reports','employee-docs','candidate-cvs','recruitment-interviews','ponto-fotos','contratos'}
+BUCKETS={'employee-documents','documents','punch-photos','payroll-reports','employee-docs','candidate-cvs','recruitment-interviews','ponto-fotos'}
 
 def _copy_file(source,target,event):
     row=event.get('row_data') or event['record_key'];bucket=row.get('bucket_id');name=row.get('name')
