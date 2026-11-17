@@ -3,6 +3,7 @@ import re
 from supabase import create_client, Client
 
 _client: Client | None = None
+_people_client: Client | None = None
 
 
 def get_client() -> Client:
@@ -12,6 +13,20 @@ def get_client() -> Client:
         key = os.environ["SUPABASE_SERVICE_KEY"]
         _client = create_client(url, key)
     return _client
+
+
+def get_people_client() -> Client:
+    """RH is isolated from the shared agent/WhatsApp control plane."""
+    global _people_client
+    url = os.environ.get("PIPOU_SUPABASE_URL", "").rstrip("/")
+    key = os.environ.get("PIPOU_SUPABASE_SERVICE_KEY", "")
+    if not url and not key:
+        return get_client()
+    if url != "https://nasvczssqtuasudpvkum.supabase.co" or not key:
+        raise RuntimeError("Pipou RH connection is not configured correctly")
+    if _people_client is None:
+        _people_client = create_client(url, key)
+    return _people_client
 
 
 def identificar_colaborador(telefone: str) -> dict | None:
@@ -29,7 +44,7 @@ def identificar_colaborador(telefone: str) -> dict | None:
     if not canonical:
         return None
 
-    db = get_client()
+    db = get_people_client()
     res = (
         db.table("contatos_kph")
         .select("employee_id")
@@ -47,7 +62,7 @@ def identificar_colaborador(telefone: str) -> dict | None:
 
 def identificar_por_id(employee_id: str) -> dict | None:
     """Busca colaborador ativo pelo UUID. Usado pelo /chat do HOS App."""
-    db = get_client()
+    db = get_people_client()
     try:
         res = (
             db.table("employees")
@@ -78,7 +93,7 @@ def identificar_por_id(employee_id: str) -> dict | None:
 
 def buscar_holerites(employee_id: str) -> list[dict]:
     """Retorna os últimos 6 holerites do colaborador."""
-    db = get_client()
+    db = get_people_client()
     res = (
         db.table("payslips")
         .select("competencia, salario_base, liquido, status, pdf_url")
@@ -92,7 +107,7 @@ def buscar_holerites(employee_id: str) -> list[dict]:
 
 def buscar_banco_horas(employee_id: str) -> list[dict]:
     """Retorna os últimos 3 períodos de banco de horas."""
-    db = get_client()
+    db = get_people_client()
     res = (
         db.table("time_records")
         .select(
@@ -109,7 +124,7 @@ def buscar_banco_horas(employee_id: str) -> list[dict]:
 
 def buscar_ferias(employee_id: str) -> list[dict]:
     """Retorna histórico de férias do colaborador via vacation_schedules."""
-    db = get_client()
+    db = get_people_client()
     res = (
         db.table("vacation_schedules")
         .select("data_inicio, data_fim, data_retorno, total_dias, status")
@@ -137,7 +152,7 @@ def registrar_falta(
     }
     score_impact = score_map.get(tipo, 0)
 
-    db = get_client()
+    db = get_people_client()
     res = (
         db.table("absences")
         .insert(
@@ -157,7 +172,7 @@ def registrar_falta(
 
 def abrir_ticket(employee_id: str, categoria: str, descricao: str) -> str:
     """Abre ticket em theo_tickets. Retorna o ticket_id."""
-    db = get_client()
+    db = get_people_client()
     res = (
         db.table("theo_tickets")
         .insert(

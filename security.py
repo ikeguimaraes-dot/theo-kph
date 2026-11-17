@@ -12,23 +12,51 @@ async def require_employee_session(request: Request) -> str:
     token = request.headers.get('X-Employee-Session', '')
     if not re.fullmatch(r'[a-f0-9]{64}', token):
         raise HTTPException(401, 'Employee session required')
-    url = os.environ.get('SUPABASE_URL', '').rstrip('/')
-    key = os.environ.get('SUPABASE_SERVICE_KEY', '')
-    if url != 'https://iqgrvptrtphvbmvrqntm.supabase.co' or not key:
-        raise HTTPException(503, 'Employee authentication unavailable')
-    headers = {'apikey': key, 'X-Hos-Protocol': '2', 'X-Employee-Session': token}
-    if key.startswith('eyJ'):
-        headers['Authorization'] = 'Bearer ' + key
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            result = await client.post(url + '/rest/v1/rpc/employee_session_check', headers=headers, json={})
-        if result.status_code in (401, 403):
-            raise HTTPException(401, 'Invalid or expired employee session')
-        if not result.is_success:
+    primary_url = os.environ.get('PIPOU_SUPABASE_URL', '').rstrip('/')
+    primary_key = os.environ.get('PIPOU_SUPABASE_SERVICE_KEY', '')
+    legacy_url = os.environ.get('SUPABASE_URL', '').rstrip('/')
+    legacy_key = os.environ.get('SUPABASE_SERVICE_KEY', '')
+    if not primary_url and not primary_key:
+        candidates = [(legacy_url, legacy_key)]
+    else:
+        if primary_url != 'https://nasvczssqtuasudpvkum.supabase.co' or not primary_key:
             raise HTTPException(503, 'Employee authentication unavailable')
-        return str(UUID(result.json()['employee_id']))
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
-        raise HTTPException(503, 'Employee authentication unavailable')
+        candidates = [(primary_url, primary_key), (legacy_url, legacy_key)]
+    for index, (url, key) in enumerate(candidates):
+        if url not in ('https://nasvczssqtuasudpvkum.supabase.co', 'https://iqgrvptrtphvbmvrqntm.supabase.co') or not key:
+            raise HTTPException(503, 'Employee authentication unavailable')
+        headers = {'apikey': key, 'X-Hos-Protocol': '2', 'X-Employee-Session': token}
+        if key.startswith('eyJ'):
+            headers['Authorization'] = 'Bearer ' + key
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                result = await client.post(url + '/rest/v1/rpc/employee_session_check', headers=headers, json={})
+            if result.status_code in (401, 403):
+                if index + 1 < len(candidates):
+                    continue
+                raise HTTPException(401, 'Invalid or expired employee session')
+            if not result.is_success:
+                raise HTTPException(503, 'Employee authentication unavailable')
+            identity = result.json()
+            employee_id = str(UUID(identity['employee_id']))
+            if index > 0:
+                # A legacy session cannot re-enable someone whose RH access was
+                # disabled, or whose credential changed, in the new project.
+                fingerprint = identity.get('credential_fingerprint', '')
+                if not re.fullmatch(r'[a-f0-9]{64}', fingerprint):
+                    raise HTTPException(503, 'Employee authentication unavailable')
+                async with httpx.AsyncClient(timeout=10) as client:
+                    active = await client.post(primary_url + '/rest/v1/rpc/employee_legacy_identity_check',
+                        headers={'apikey': primary_key, 'Authorization': 'Bearer ' + primary_key},
+                        json={'p_employee_id': employee_id, 'p_fingerprint': fingerprint})
+                if not active.is_success:
+                    raise HTTPException(503, 'Employee authentication unavailable')
+                if active.json() is not True:
+                    raise HTTPException(401, 'Invalid or expired employee session')
+            return employee_id
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            raise HTTPException(503, 'Employee authentication unavailable')
+    raise HTTPException(401, 'Invalid or expired employee session')
 
 def require_api_key(request: Request, agent: str) -> None:
     expected = os.environ.get(f"{agent.upper()}_INTERNAL_TOKEN", "")

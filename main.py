@@ -14,6 +14,7 @@ import claude_client
 import conversation
 import instrumentation
 import security
+import pipou_sync
 import supabase_client as db
 
 logging.basicConfig(level=logging.INFO)
@@ -38,7 +39,15 @@ def get_twilio() -> TwilioClient:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("Theo iniciando...")
-    yield
+    sync_task=asyncio.create_task(pipou_sync.run())
+    try:
+        yield
+    finally:
+        sync_task.cancel()
+        try:
+            await sync_task
+        except asyncio.CancelledError:
+            pass
     log.info("Theo encerrando.")
 
 
@@ -120,7 +129,9 @@ class SendResponse(BaseModel):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "agent": "theo"}
+    return {"status": "ok", "agent": "theo", "people_project":
+            os.environ.get("PIPOU_SUPABASE_URL", os.environ.get("SUPABASE_URL", "")).split("//")[-1].split(".")[0],
+            "legacy_sync": os.environ.get("PIPOU_SYNC_ENABLED")=="true"}
 
 
 @app.post("/send", response_model=SendResponse)
