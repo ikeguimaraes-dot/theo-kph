@@ -15,7 +15,7 @@ def get_client() -> Client:
     return _client
 
 
-def get_people_client() -> Client:
+def get_pipou_client() -> Client:
     """RH is isolated from the shared agent/WhatsApp control plane."""
     global _people_client
     url = os.environ.get("PIPOU_SUPABASE_URL", "").rstrip("/")
@@ -27,6 +27,12 @@ def get_people_client() -> Client:
     if _people_client is None:
         _people_client = create_client(url, key)
     return _people_client
+
+
+def get_people_client() -> Client:
+    if os.environ.get("PIPOU_LEGACY_RH_MODE")=="true":
+        return get_client()
+    return get_pipou_client()
 
 
 def identificar_colaborador(telefone: str) -> dict | None:

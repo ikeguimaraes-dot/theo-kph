@@ -130,7 +130,7 @@ class SendResponse(BaseModel):
 @app.get("/health")
 async def health():
     return {"status": "ok", "agent": "theo", "people_project":
-            os.environ.get("PIPOU_SUPABASE_URL", os.environ.get("SUPABASE_URL", "")).split("//")[-1].split(".")[0],
+            (os.environ.get("SUPABASE_URL", "") if os.environ.get("PIPOU_LEGACY_RH_MODE")=="true" else os.environ.get("PIPOU_SUPABASE_URL", os.environ.get("SUPABASE_URL", ""))).split("//")[-1].split(".")[0],
             "legacy_sync": os.environ.get("PIPOU_SYNC_ENABLED")=="true"}
 
 

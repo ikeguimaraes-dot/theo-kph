@@ -16,6 +16,8 @@ async def require_employee_session(request: Request) -> str:
     primary_key = os.environ.get('PIPOU_SUPABASE_SERVICE_KEY', '')
     legacy_url = os.environ.get('SUPABASE_URL', '').rstrip('/')
     legacy_key = os.environ.get('SUPABASE_SERVICE_KEY', '')
+    if os.environ.get('PIPOU_LEGACY_RH_MODE')=='true':
+        primary_url='';primary_key=''
     if not primary_url and not primary_key:
         candidates = [(legacy_url, legacy_key)]
     else:

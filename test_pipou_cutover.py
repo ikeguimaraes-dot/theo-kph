@@ -48,3 +48,18 @@ def test_rh_client_is_separate_from_shared_agent_client(monkeypatch):
     assert db.get_people_client() is not db.get_client()
     assert factory.call_args_list[0].args==(NEW,'new-server-test')
     assert factory.call_args_list[1].args==(OLD,'old-server-test')
+
+
+def test_legacy_customer_mode_keeps_rh_in_customer_database_and_bridge_separate(monkeypatch):
+    monkeypatch.setenv('PIPOU_LEGACY_RH_MODE','true')
+    old=object();new=object()
+    monkeypatch.setattr(db,'get_client',Mock(return_value=old))
+    monkeypatch.setattr(db,'get_pipou_client',Mock(return_value=new))
+    assert db.get_people_client() is old
+    assert db.get_pipou_client() is new
+
+def test_legacy_customer_mode_never_validates_new_product_sessions(monkeypatch):
+    client=setup(monkeypatch,[resp(200,{'employee_id':EID})]);monkeypatch.setenv('PIPOU_LEGACY_RH_MODE','true')
+    assert call()==EID
+    assert client.post.call_count==1
+    assert client.post.call_args.args[0].startswith(OLD)

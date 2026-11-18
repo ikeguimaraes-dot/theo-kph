@@ -58,7 +58,11 @@ def transfer(source,target):
             if row is not None:batch.append(row);size+=width
     for event in events:
         if event['schema_name']!='storage':continue
-        try:_copy_file(source,target,event);acked.append(event['id'])
+        try:
+            _copy_file(source,target,event)
+            if event['operation']!='DELETE':
+                key=event['record_key'];target.rpc('pipou_sync_register_file',{'p_bucket':key['bucket_id'],'p_name':key['name']}).execute()
+            acked.append(event['id'])
         except Exception as error:
             code=str(error) if isinstance(error,ValueError) else type(error).__name__
             errors.append({'id':event['id'],'code':code[:80]})
@@ -70,7 +74,7 @@ async def run():
     while True:
         try:
             if os.environ.get('PIPOU_SYNC_ENABLED')=='true':
-                old=db.get_client();new=db.get_people_client()
+                old=db.get_client();new=db.get_pipou_client()
                 if old is new:raise RuntimeError('Dedicated database is required')
                 await asyncio.to_thread(transfer,old,new)
                 await asyncio.to_thread(transfer,new,old)
